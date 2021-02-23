@@ -95,12 +95,11 @@ public class ShareMenuReactView: NSObject {
     func extractDataFromContext(context: NSExtensionContext, withCallback callback: @escaping (String?, String?, NSException?) -> Void) {
         let item:NSExtensionItem! = context.inputItems.first as? NSExtensionItem
         let attachments:[AnyObject]! = item.attachments
-
         var urlProvider:NSItemProvider! = nil
-        var imageProvider:NSItemProvider! = nil
+        var imageProvider = [NSItemProvider]()
         var textProvider:NSItemProvider! = nil
         var dataProvider:NSItemProvider! = nil
-
+        
         for provider in attachments {
             if provider.hasItemConformingToTypeIdentifier(kUTTypeURL as String) {
                 urlProvider = provider as? NSItemProvider
@@ -109,41 +108,63 @@ public class ShareMenuReactView: NSObject {
                 textProvider = provider as? NSItemProvider
                 break
             } else if provider.hasItemConformingToTypeIdentifier(kUTTypeImage as String) {
-                imageProvider = provider as? NSItemProvider
-                break
+                imageProvider.append(provider as? NSItemProvider ?? NSItemProvider())
             } else if provider.hasItemConformingToTypeIdentifier(kUTTypeData as String) {
                 dataProvider = provider as? NSItemProvider
                 break
             }
         }
-
+        
         if (urlProvider != nil) {
             urlProvider.loadItem(forTypeIdentifier: kUTTypeURL as String, options: nil) { (item, error) in
-                let url: URL! = item as? URL
-
+                let url: URL! = item as? NSURL as URL?
                 callback(url.absoluteString, "text/plain", nil)
             }
-        } else if (imageProvider != nil) {
-            imageProvider.loadItem(forTypeIdentifier: kUTTypeImage as String, options: nil) { (item, error) in
-                let url: URL! = item as? URL
-
-                callback(url.absoluteString, self.extractMimeType(from: url), nil)
+        } else if (imageProvider.count > 0) {
+            var totalUrl = ""
+            var i = 0;
+            for imageItem in imageProvider {
+                imageItem.loadItem(forTypeIdentifier: kUTTypeImage as String, options: nil) { (item, error) in
+                    let url = item as? URL
+                    i += 1;
+                    let isLastIndex = i == imageProvider.count
+                    if(url != nil){
+                        totalUrl = totalUrl + url!.absoluteString + (isLastIndex ? "" : ";")
+                    }else{
+                        let image: UIImage! = item as? UIImage
+                        let imageName = UUID().uuidString
+                        let urlString = self.saveImageDocumentDirectory(image: image, imageName: imageName, qually: 0.5)
+                        totalUrl = totalUrl + urlString + (isLastIndex ? "" : ";")
+                    }
+                    
+                    if(isLastIndex){
+                        callback("\(totalUrl)" , "image/JPEG", nil)
+                    }
+                }
             }
         } else if (textProvider != nil) {
             textProvider.loadItem(forTypeIdentifier: kUTTypeText as String, options: nil) { (item, error) in
                 let text:String! = item as? String
-
+                
                 callback(text, "text/plain", nil)
             }
         }  else if (dataProvider != nil) {
             dataProvider.loadItem(forTypeIdentifier: kUTTypeData as String, options: nil) { (item, error) in
                 let url: URL! = item as? URL
-
+                
                 callback(url.absoluteString, self.extractMimeType(from: url), nil)
             }
         } else {
             callback(nil, nil, NSException(name: NSExceptionName(rawValue: "Error"), reason:"couldn't find provider", userInfo:nil))
         }
+    }
+    
+    func saveImageDocumentDirectory(image: UIImage, imageName: String, qually: CGFloat)-> String{
+      let fileManager = FileManager.default
+      let paths = (NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0] as NSString).appendingPathComponent(imageName)
+      let imageData = image.jpegData(compressionQuality: qually)
+      fileManager.createFile(atPath: paths as String, contents: imageData, attributes: nil)
+      return "\(paths)"
     }
 
     func extractMimeType(from url: URL) -> String {
