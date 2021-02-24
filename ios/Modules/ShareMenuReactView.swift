@@ -95,15 +95,14 @@ public class ShareMenuReactView: NSObject {
     func extractDataFromContext(context: NSExtensionContext, withCallback callback: @escaping (String?, String?, NSException?) -> Void) {
         let item:NSExtensionItem! = context.inputItems.first as? NSExtensionItem
         let attachments:[AnyObject]! = item.attachments
-        var urlProvider:NSItemProvider! = nil
+        var urlProvider = [NSItemProvider]()
         var imageProvider = [NSItemProvider]()
         var textProvider:NSItemProvider! = nil
         var dataProvider:NSItemProvider! = nil
         
         for provider in attachments {
             if provider.hasItemConformingToTypeIdentifier(kUTTypeURL as String) {
-                urlProvider = provider as? NSItemProvider
-                break
+                urlProvider.append(provider as? NSItemProvider ?? NSItemProvider())
             } else if provider.hasItemConformingToTypeIdentifier(kUTTypeText as String) {
                 textProvider = provider as? NSItemProvider
                 break
@@ -114,11 +113,19 @@ public class ShareMenuReactView: NSObject {
                 break
             }
         }
-        
-        if (urlProvider != nil) {
-            urlProvider.loadItem(forTypeIdentifier: kUTTypeURL as String, options: nil) { (item, error) in
-                let url: URL! = item as? NSURL as URL?
-                callback(url.absoluteString, "text/plain", nil)
+        if (urlProvider.count > 0) {
+            var totalUrl = ""
+            var i = 0
+            for urlItem in urlProvider {
+                urlItem.loadItem(forTypeIdentifier: kUTTypeURL as String, options: nil) { (item, error) in
+                    let url: URL! = item as? NSURL as URL?
+                    i += 1;
+                    let isLastIndex = i == urlProvider.count
+                    totalUrl = totalUrl + url!.absoluteString + (isLastIndex ? "" : ";")
+                    if(isLastIndex){
+                        callback("\(totalUrl)", "text/plain", nil)
+                    }
+                }
             }
         } else if (imageProvider.count > 0) {
             var totalUrl = ""
